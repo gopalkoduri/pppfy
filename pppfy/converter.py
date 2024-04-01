@@ -1,27 +1,17 @@
 import csv
-from datetime import datetime, timedelta
+import json
 from pathlib import Path
-import subprocess
 
 
 class Converter:
-    def __init__(self, ppp_data_dir="ppp/data"):
+    def __init__(self, ppp_data_dir="ppp/data", country_info_file="country-info/data/country-info.json"):
         self.ppp_data_dir = Path(ppp_data_dir)
         self.ppp_data_file = self.ppp_data_dir / "ppp-gdp.csv"
+        self.country_info_file = Path(country_info_file)
         self.ppp_data = {}
-
-        self.check_and_regenerate_data()
+        self.country_info = {}
         self.load_ppp_data()
-
-    def check_and_regenerate_data(self):
-        if self.ppp_data_file.exists():
-            file_age = datetime.now() - datetime.fromtimestamp(self.ppp_data_file.stat().st_mtime)
-            if file_age.days > 365:
-                print("Data file is older than a year, regenerating...")
-                subprocess.run(["make", "data"], cwd=self.ppp_data_dir.parent)
-        else:
-            print("Data file not found, generating now...")
-            subprocess.run(["make", "data"], cwd=self.ppp_data_dir.parent)
+        self.load_country_info()
 
     def load_ppp_data(self):
         with open(self.ppp_data_file, mode="r", encoding="utf-8") as file:
@@ -36,25 +26,57 @@ class Converter:
 
                 self.ppp_data[country_code][year] = ppp
 
+    def load_country_info(self):
+        with open(self.country_info_file, "r", encoding="utf-8") as file:
+            countries = json.load(file)
+            for country in countries:
+                iso2_code = country["ISO"]
+                self.country_info[iso2_code] = {
+                    "country": country["Country"],
+                    "ISO": iso2_code,
+                    "ISO3": country["ISO3"],
+                    "currency": country["CurrencyCode"],
+                }
+
     def get_price_mapping(self, source_country="US", source_price=79, destination_country=None, year=None):
         if source_country not in self.ppp_data:
             raise ValueError("Source country data not available")
-        if destination_country not in self.ppp_data:
-            raise ValueError("Destination country data not available")
 
-        if year is None:
-            year = max(
-                set(self.ppp_data[source_country].keys()).intersection(self.ppp_data[destination_country].keys())
+        mappings = []
+
+        if destination_country:
+            countries = [destination_country] if destination_country in self.country_info else []
+        else:
+            countries = self.ppp_data.keys()
+
+        for iso2_code in countries:
+            if year is None:
+                cur_pair_year = max(
+                    set(self.ppp_data[source_country].keys()).intersection(self.ppp_data[iso2_code].keys())
+                )
+            else:
+                cur_pair_year = year
+
+            source_ppp = self.ppp_data[source_country][cur_pair_year]
+            destination_ppp = self.ppp_data[iso2_code][cur_pair_year]
+            usd_equivalent_price = source_price / source_ppp
+            adjusted_price = usd_equivalent_price * destination_ppp
+
+            mappings.append(
+                {
+                    "country": self.country_info[iso2_code]["country"],
+                    "ISO": iso2_code,
+                    "ISO3": self.country_info[iso2_code]["ISO3"],
+                    "currency": self.country_info[iso2_code]["currency"],
+                    "price": adjusted_price,
+                    "ppp_year": cur_pair_year,
+                }
             )
 
-        if year not in self.ppp_data[source_country]:
-            raise ValueError(f"Data for the year {year} is not available for {source_country}")
-        if year not in self.ppp_data[destination_country]:
-            raise ValueError(f"Data for the year {year} is not available for {destination_country}")
+        return mappings if destination_country is None else mappings[0]
 
-        source_ppp = self.ppp_data[source_country][year]
-        destination_ppp = self.ppp_data[destination_country][year]
 
-        usd_equivalent_price = source_price / source_ppp
-        adjusted_price = usd_equivalent_price * destination_ppp
-        return adjusted_price
+# Usage
+# from pppfy.converter import Converter
+# converter = Converter()
+# print(converter.get_price_mapping(source_country="US", source_price=79))
