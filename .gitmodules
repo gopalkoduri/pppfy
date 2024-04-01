@@ -1,3 +1,6 @@
 [submodule "ppp"]
 	path = ppp
 	url = git@bitbucket.org:musicmuni/ppp.git
+[submodule "country-info"]
+	path = country-info
+	url = git@bitbucket.org:musicmuni/country-info.git
