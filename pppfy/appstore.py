@@ -26,25 +26,25 @@ class AppStorePricing:
             data.append(dict(zip(headers, columns)))
 
         # Some of the rows have region with multiple countries, let's split them up
-        countries = []
+        currency_info = {}
         for item in data:
+            if item["Region Code"] in ["ZZ", "Z1"]:
+                continue
             if "," in item["Countries or Regions"]:
-                countries = [i.strip() for i in item["Countries or Regions"].split(",")]
-                for c in countries:
+                country_names = [i.strip() for i in item["Countries or Regions"].split(",")]
+                for c in country_names:
                     country_info = {
                         "Report Region": item["Report Region"],
                         "Report Currency": item["Report Currency"],
                         "Region Code": "",
                         "Country": c,
                     }
-                    countries.append(country_info)
+                    currency_info[c] = country_info
             else:
                 item["Country"] = item["Countries or Regions"]
                 item.pop("Countries or Regions")
-                countries.append(item)
+                currency_info[item["Country"]] = item
 
-        # Convert data to a dictionary with country codes as keys
-        currency_info = {item["Country"]: item for item in data}
         return currency_info
 
     def convert_to_appstore_currency(self, iso2_code, price, currency):
