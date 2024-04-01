@@ -1,3 +1,4 @@
+import json
 import requests
 from bs4 import BeautifulSoup
 from currency_converter import CurrencyConverter
@@ -7,10 +8,19 @@ class AppStorePricing:
     def __init__(
         self,
         url="https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/",
+        country_info_file="country-info/data/country-info.json",
     ):
         self.url = url
+        self.country_info_file = country_info_file
+        self.country_info = self.load_country_info()
         self.currency_info = self.fetch_appstore_currency_info()
         self.currency_converter = CurrencyConverter()
+
+    def load_country_info(self):
+        with open(self.country_info_file, "r", encoding="utf-8") as file:
+            country_info = json.load(file)
+            # Create a mapping from country name to ISO2 code
+            return {country["Country"]: country["ISO"] for country in country_info}
 
     def fetch_appstore_currency_info(self):
         print("Fetching appstore countries and regions information ...")
@@ -33,10 +43,13 @@ class AppStorePricing:
             if "," in item["Countries or Regions"]:
                 country_names = [i.strip() for i in item["Countries or Regions"].split(",")]
                 for c in country_names:
+                    iso_code = self.country_info.get(c, "")
+                    if not iso_code:
+                        print(c, "has not iso code!")
                     country_info = {
                         "Report Region": item["Report Region"],
                         "Report Currency": item["Report Currency"],
-                        "Region Code": "",
+                        "Region Code": iso_code,
                         "Country": c,
                     }
                     currency_info[c] = country_info
@@ -59,18 +72,3 @@ class AppStorePricing:
     def round_off_price(self, price):
         # Implement specific App Store rounding logic here
         return round(price)
-
-
-# # Example usage
-# app_store_pricing = AppStorePricing()
-# iso2_code = "US"
-# local_currency = "USD"
-# local_price = 10  # Example price
-# appstore_currency, converted_price = app_store_pricing.convert_to_appstore_currency(
-#     iso2_code, local_price, local_currency
-# )
-# rounded_price = app_store_pricing.round_off_price(converted_price)
-
-# print(f"Original price: {local_price} {local_currency}")
-# print(f"Converted price: {converted_price} {appstore_currency}")
-# print(f"Rounded price: {rounded_price} {appstore_currency}")
