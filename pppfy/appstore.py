@@ -2,6 +2,7 @@ import json
 import requests
 from bs4 import BeautifulSoup
 from currency_converter import CurrencyConverter
+from restcountries import RestCountryApiV2 as rapi
 
 
 class AppStorePricing:
@@ -11,18 +12,27 @@ class AppStorePricing:
         country_info_file="country-info/data/country-info.json",
     ):
         self.url = url
-        self.country_info_file = country_info_file
-        self.country_info = self.load_country_info()
-        self.currency_info = self.fetch_appstore_currency_info()
+        self.country_info = self.load_country_info(country_info_file)
         self.currency_converter = CurrencyConverter()
+        self.country_currency_mapping = self.fetch_appstore_country_currency_mapping()
 
-    def load_country_info(self):
-        with open(self.country_info_file, "r", encoding="utf-8") as file:
+    def load_country_info(self, country_info_file):
+        with open(country_info_file, "r", encoding="utf-8") as file:
             country_info = json.load(file)
             # Create a mapping from country name to ISO2 code
             return {country["Country"]: country["ISO"] for country in country_info}
 
-    def fetch_appstore_currency_info(self):
+    def get_country_iso_code(self, name):
+        iso_code = self.country_info.get(name, "")
+        if not iso_code:
+            matches = rapi.get_countries_by_name("Czech Republic")
+            if matches:
+                if len(matches) > 1:
+                    print(name, "has more than one matches with name", matches)
+                iso_code = matches[0].alpha2_code
+        return iso_code
+
+    def fetch_appstore_country_currency_mapping(self):
         print("Fetching appstore countries and regions information ...")
         response = requests.get(self.url)
         soup = BeautifulSoup(response.content, "html.parser")
@@ -36,14 +46,14 @@ class AppStorePricing:
             data.append(dict(zip(headers, columns)))
 
         # Some of the rows have region with multiple countries, let's split them up
-        currency_info = {}
+        country_currency_mapping = {}
         for item in data:
             if item["Region Code"] in ["ZZ", "Z1"]:
                 continue
             if "," in item["Countries or Regions"]:
                 country_names = [i.strip() for i in item["Countries or Regions"].split(",")]
                 for c in country_names:
-                    iso_code = self.country_info.get(c, "")
+                    iso_code = self.get_country_iso_code(c)
                     if not iso_code:
                         print(c, "has not iso code!")
                     country_info = {
@@ -52,16 +62,16 @@ class AppStorePricing:
                         "Region Code": iso_code,
                         "Country": c,
                     }
-                    currency_info[c] = country_info
+                    country_currency_mapping[iso_code] = country_info
             else:
                 item["Country"] = item["Countries or Regions"]
                 item.pop("Countries or Regions")
-                currency_info[item["Country"]] = item
+                country_currency_mapping[item["Region Code"]] = item
 
-        return currency_info
+        return country_currency_mapping
 
     def convert_to_appstore_currency(self, iso2_code, price, currency):
-        appstore_currency = self.currency_info.get(iso2_code, {}).get("Currency", currency)
+        appstore_currency = self.country_currency_mapping.get(iso2_code, {}).get("Report Currency", currency)
 
         if currency == appstore_currency:
             return appstore_currency, price
