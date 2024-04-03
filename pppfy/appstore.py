@@ -159,7 +159,3 @@ class AppStorePricing:
                 return lower if str(lower)[-1] != "0" else lower - 0.01  # avoid x.00 prices
             else:
                 return upper if str(upper)[-1] != "0" else upper - 0.01  # avoid x.00 prices
-
-
-if __name__ == "__main__":
-    appstore_pricing = AppStorePricing()
