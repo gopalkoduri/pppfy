@@ -1,7 +1,7 @@
 import csv
 import json
 from pathlib import Path
-from appstore import AppStorePricing
+from .appstore import AppStorePricing
 
 
 class Converter:
@@ -83,10 +83,15 @@ class Converter:
         if isinstance(price_mapping, dict):
             price_mapping = [price_mapping]
 
+        appstore_price_mapping = []
         for mapping in price_mapping:
             iso2_code = mapping["ISO"]
             local_price = mapping["price"]
             currency = mapping["currency"]
+
+            # Is the country featured in appstore list of countries?
+            if iso2_code not in appstore_pricing.country_reference_rounded_prices:
+                continue
 
             appstore_currency, appstore_price = appstore_pricing.convert_to_appstore_currency(
                 iso2_code, local_price, currency
@@ -95,8 +100,9 @@ class Converter:
 
             mapping["appstore_currency"] = appstore_currency
             mapping["appstore_price"] = rounded_price
+            appstore_price_mapping.append(mapping)
 
-        return price_mapping
+        return appstore_price_mapping
 
 
 # Usage

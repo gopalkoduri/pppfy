@@ -39,7 +39,7 @@ class AppStorePricing:
             )
 
             # Add the country's two-letter code to the all_country_names dictionary
-            self.country_names_map[country["cca2"].lower()] = all_names
+            self.country_names_map[country["cca2"]] = all_names
 
     def log(self, iso_code, name, match):
         if iso_code in self.dup_check:
@@ -122,8 +122,15 @@ class AppStorePricing:
 
         if currency == appstore_currency:
             return appstore_currency, price
+        try:
+            converted_price = self.currency_converter.convert(price, currency, appstore_currency)
+        except ValueError:
+            response = requests.get(
+                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{currency.lower()}.json"
+            )
+            currency_exchange_rates = response.json()
+            converted_price = price * currency_exchange_rates[currency.lower()][appstore_currency.lower()]
 
-        converted_price = self.currency_converter.convert(price, currency, appstore_currency)
         return appstore_currency, converted_price
 
     def round_off_price(self, iso2_code, price):
