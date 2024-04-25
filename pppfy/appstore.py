@@ -1,4 +1,4 @@
-import csv
+import csv, math
 import requests
 from bs4 import BeautifulSoup
 from currency_converter import CurrencyConverter
@@ -138,24 +138,36 @@ class AppStorePricing:
         if reference_price is None:
             raise ValueError(f"No reference price found for {iso2_code}")
 
-        # Implement the App Store's specific price rounding logic
-        # If the price is a whole number
-        if price.is_integer():
-            if price % 10 in (0, 9):
-                return price
-            else:
-                return price - (price % 10) + (9 if price % 10 < 5 else 10)
-        # If the price is a float
+        rounded_price = None
+        candidates = []
+        # Determine suffix and the appropriate rounding mechanism
+        if float(reference_price).is_integer():
+            ref_price_int_str = str(int(reference_price))
+            if ref_price_int_str.endswith("0"):
+                candidates = [round(price / 10) * 10]
+            elif ref_price_int_str.endswith("8"):
+                # Find closest number ending in 8
+                candidates = [round(price / 10) * 10 + 8, round(price / 10) * 10 - 2]
+            elif ref_price_int_str.endswith("99"):
+                # Find closest number ending in 99
+                candidates = [round(price / 100) * 100 + 99, round(price / 100) * 100 - 1]
         else:
-            # Calculate the difference from the nearest x.99 price
-            lower = round(price) - 0.01  # x.99 below the price
-            upper = round(price + 0.99) - 0.01  # x.99 above the price
+            ref_price_str = str(reference_price)
+            base_price = int(price)
 
-            # Choose the nearest x.99 or x.98 value
-            lower_diff = price - lower
-            upper_diff = upper - price
-
-            if lower_diff < upper_diff:
-                return lower if str(lower)[-1] != "0" else lower - 0.01  # avoid x.00 prices
-            else:
-                return upper if str(upper)[-1] != "0" else upper - 0.01  # avoid x.00 prices
+            if ref_price_str.endswith("4.99"):
+                candidates = [base_price - (base_price % 10) + 4.99]
+            elif ref_price_str.endswith("4.9"):
+                candidates = [base_price - (base_price % 10) + 4.9]
+            elif ref_price_str.endswith("9.98"):
+                candidates = [base_price - (base_price % 10) + 9.98, base_price - (base_price % 10) - 0.02]
+            elif ref_price_str.endswith("9.9"):
+                candidates = [base_price - (base_price % 10) + 9.9, base_price - (base_price % 10) - 0.1]
+            elif ref_price_str.endswith("9.99"):
+                candidates = [base_price - (base_price % 10) + 9.99, base_price - (base_price % 10) - 0.01]
+            elif ref_price_str.endswith("8.99"):
+                candidates = [base_price - (base_price % 10) + 8.99, base_price - (base_price % 10) - 1.01]
+            else:  # also handles the case where price is *.99
+                candidates = [base_price + 0.99]
+        rounded_price = min(candidates, key=lambda x: abs(x - price))
+        return rounded_price
