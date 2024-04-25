@@ -1,5 +1,6 @@
-import csv, math
+import csv
 import requests
+from decimal import Decimal
 from bs4 import BeautifulSoup
 from currency_converter import CurrencyConverter
 from thefuzz import process, fuzz
@@ -134,40 +135,59 @@ class AppStorePricing:
         return appstore_currency, converted_price
 
     def round_off_price(self, iso2_code, price):
-        reference_price = self.country_reference_rounded_prices.get(iso2_code)
+        reference_price = Decimal(self.country_reference_rounded_prices.get(iso2_code))
         if reference_price is None:
             raise ValueError(f"No reference price found for {iso2_code}")
 
+        price = Decimal(price)  # Convert input price to Decimal
         rounded_price = None
         candidates = []
+
         # Determine suffix and the appropriate rounding mechanism
-        if float(reference_price).is_integer():
+        if reference_price == reference_price.to_integral_value():
             ref_price_int_str = str(int(reference_price))
-            if ref_price_int_str.endswith("0"):
-                candidates = [round(price / 10) * 10]
-            elif ref_price_int_str.endswith("8"):
-                # Find closest number ending in 8
-                candidates = [round(price / 10) * 10 + 8, round(price / 10) * 10 - 2]
+            if ref_price_int_str.endswith("8"):
+                candidates = [
+                    (price / Decimal("10")).to_integral_value() * Decimal("10") + Decimal("8"),
+                    (price / Decimal("10")).to_integral_value() * Decimal("10") - Decimal("2"),
+                ]
             elif ref_price_int_str.endswith("99"):
-                # Find closest number ending in 99
-                candidates = [round(price / 100) * 100 + 99, round(price / 100) * 100 - 1]
+                candidates = [
+                    (price / Decimal("100")).to_integral_value() * Decimal("100") + Decimal("99"),
+                    (price / Decimal("100")).to_integral_value() * Decimal("100") - Decimal("1"),
+                ]
+            else:  # also handles case where it endswith("0")
+                candidates = [(price / Decimal("10")).to_integral_value() * Decimal("10")]
         else:
             ref_price_str = str(reference_price)
-            base_price = int(price)
+            base_price = price.to_integral_value()
 
             if ref_price_str.endswith("4.99"):
-                candidates = [base_price - (base_price % 10) + 4.99]
+                candidates = [base_price - (base_price % Decimal("10")) + Decimal("4.99")]
             elif ref_price_str.endswith("4.9"):
-                candidates = [base_price - (base_price % 10) + 4.9]
+                candidates = [base_price - (base_price % Decimal("10")) + Decimal("4.9")]
             elif ref_price_str.endswith("9.98"):
-                candidates = [base_price - (base_price % 10) + 9.98, base_price - (base_price % 10) - 0.02]
-            elif ref_price_str.endswith("9.9"):
-                candidates = [base_price - (base_price % 10) + 9.9, base_price - (base_price % 10) - 0.1]
+                candidates = [
+                    base_price - (base_price % Decimal("10")) + Decimal("9.98"),
+                    base_price - (base_price % Decimal("10")) - Decimal("0.02"),
+                ]
             elif ref_price_str.endswith("9.99"):
-                candidates = [base_price - (base_price % 10) + 9.99, base_price - (base_price % 10) - 0.01]
+                candidates = [
+                    base_price - (base_price % Decimal("10")) + Decimal("9.99"),
+                    base_price - (base_price % Decimal("10")) - Decimal("0.01"),
+                ]
+            elif ref_price_str.endswith("9.9"):
+                candidates = [
+                    base_price - (base_price % Decimal("10")) + Decimal("9.9"),
+                    base_price - (base_price % Decimal("10")) - Decimal("0.1"),
+                ]
             elif ref_price_str.endswith("8.99"):
-                candidates = [base_price - (base_price % 10) + 8.99, base_price - (base_price % 10) - 1.01]
+                candidates = [
+                    base_price - (base_price % Decimal("10")) + Decimal("8.99"),
+                    base_price - (base_price % Decimal("10")) - Decimal("1.01"),
+                ]
             else:  # also handles the case where price is *.99
-                candidates = [base_price + 0.99]
+                candidates = [base_price + Decimal("0.99")]
+
         rounded_price = min(candidates, key=lambda x: abs(x - price))
         return rounded_price
