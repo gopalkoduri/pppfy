@@ -68,8 +68,8 @@ class Converter:
                     "country": self.country_info[iso2_code]["country"],
                     "ISO": iso2_code,
                     "ISO3": self.country_info[iso2_code]["ISO3"],
-                    "currency": self.country_info[iso2_code]["currency"],
-                    "price": adjusted_price,
+                    "local_currency": self.country_info[iso2_code]["currency"],
+                    "local_price": adjusted_price,
                     "ppp_year": cur_pair_year,
                 }
             )
@@ -86,17 +86,23 @@ class Converter:
         appstore_price_mapping = []
         for mapping in price_mapping:
             iso2_code = mapping["ISO"]
-            local_price = mapping["price"]
-            currency = mapping["currency"]
+            local_price = mapping["local_price"]
+            local_currency = mapping["local_currency"]
 
             # Is the country featured in appstore list of countries?
             if iso2_code not in appstore_pricing.country_reference_rounded_prices:
                 continue
 
-            appstore_currency, appstore_price = appstore_pricing.convert_to_appstore_currency(
-                iso2_code, local_price, currency
+            appstore_currency, appstore_price = appstore_pricing.local_currency_to_appstore_preferred_currency(
+                iso2_code, local_price, local_currency
             )
-            rounded_price = appstore_pricing.round_off_price(iso2_code, appstore_price)
+
+            # Some heavily devalued currencies might end up with very low usd values < 10
+            # TODO needs a better fix
+            if appstore_price < 10:
+                appstore_price = 10
+
+            rounded_price = appstore_pricing.round_off_price_to_appstore_format(iso2_code, appstore_price)
 
             mapping["appstore_currency"] = appstore_currency
             mapping["appstore_price"] = rounded_price

@@ -1,4 +1,6 @@
 import csv
+import json
+import os
 import requests
 from decimal import Decimal
 from bs4 import BeautifulSoup
@@ -14,6 +16,7 @@ class AppStorePricing:
         self.dup_check = {}
         self.url = url
         self.currency_converter = CurrencyConverter()
+        self.creds = json.load(open("resources/creds.json"))
         self.country_info = {}
         self.country_names_map = {}
         self.fetch_country_names_map()
@@ -77,7 +80,7 @@ class AppStorePricing:
             for row in reader:
                 iso_code = self.get_country_iso_code(row["Countries or Regions"])
                 if iso_code:
-                    self.country_reference_rounded_prices[iso_code] = float(row["Price"])
+                    self.country_reference_rounded_prices[iso_code] = Decimal(row["Price"])
                     # print(",".join([iso_code, row["Countries or Regions"]]))
                 else:
                     print(f"No ISO code found for {row['Countries or Regions']}")
@@ -105,7 +108,13 @@ class AppStorePricing:
                 for c in country_names:
                     iso_code = self.get_country_iso_code(c)
                     if not iso_code:
-                        print(c, "has not iso code!")
+                        print(c, "has no iso code!")
+
+                    # Countries like Vietnam and Pakistan have their own currencies supported, but are mentioned in WW as well
+                    # Keep their own currencies
+                    if iso_code in self.country_currency_mapping.keys() and item["Region Code"] in ["EU", "LL", "WW"]:
+                        continue
+
                     country_info = {
                         "Report Region": item["Report Region"],
                         "Report Currency": item["Report Currency"],
@@ -118,24 +127,43 @@ class AppStorePricing:
                 item.pop("Countries or Regions")
                 self.country_currency_mapping[item["Region Code"]] = item
 
-    def convert_to_appstore_currency(self, iso2_code, price, currency):
-        appstore_currency = self.country_currency_mapping.get(iso2_code, {}).get("Report Currency", currency)
-
-        if currency == appstore_currency:
-            return appstore_currency, price
+    def convert_between_currencies_by_market_xrate(self, price, from_currency, to_currency):
         try:
-            converted_price = self.currency_converter.convert(price, currency, appstore_currency)
+            converted_price = self.currency_converter.convert(price, from_currency, to_currency)
         except ValueError:
             response = requests.get(
-                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{currency.lower()}.json"
+                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{from_currency.lower()}.json"
             )
             currency_exchange_rates = response.json()
-            converted_price = price * currency_exchange_rates[currency.lower()][appstore_currency.lower()]
+            converted_price = price * currency_exchange_rates[from_currency.lower()][to_currency.lower()]
 
+            # Alternative solution using xe.com
+            # data = requests.get(
+            #     f"https://www.xe.com/currencyconverter/convert/?Amount={price}&From={from_currency}&To={to_currency}"
+            # )
+            # soup = BeautifulSoup(data, "html.parser")
+            # p_element = soup.find("p", class_="sc-1c293993-1 fxoXHw")
+            # full_text = p_element.get_text()
+            # numeric_text = "".join([char for char in full_text if char.isdigit() or char == "."])
+            # converted_price = float(numeric_text)
+
+        return converted_price
+
+    def local_currency_to_appstore_preferred_currency(self, country_iso2_code, price, country_currency):
+        appstore_currency = self.country_currency_mapping.get(country_iso2_code, {}).get(
+            "Report Currency", country_currency
+        )
+
+        if country_currency == appstore_currency:
+            return appstore_currency, price
+
+        converted_price = self.convert_between_currencies_by_market_xrate(
+            price=price, from_currency=country_currency, to_currency=appstore_currency
+        )
         return appstore_currency, converted_price
 
-    def round_off_price(self, iso2_code, price):
-        reference_price = Decimal(self.country_reference_rounded_prices.get(iso2_code))
+    def round_off_price_to_appstore_format(self, iso2_code, price):
+        reference_price = self.country_reference_rounded_prices.get(iso2_code)
         if reference_price is None:
             raise ValueError(f"No reference price found for {iso2_code}")
 
