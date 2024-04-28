@@ -1,25 +1,18 @@
 import csv
 import json
-import os
+
 import requests
 from decimal import Decimal
 from bs4 import BeautifulSoup
-from currency_converter import CurrencyConverter
-from thefuzz import process, fuzz
+
+from .utils import PricingUtils, GeoUtils
 
 
 class AppStorePricing:
-    def __init__(
-        self,
-        url="https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies/",
-    ):
+    def __init__(self):
         self.dup_check = {}
-        self.url = url
-        self.currency_converter = CurrencyConverter()
-        self.creds = json.load(open("resources/creds.json"))
-        self.country_info = {}
-        self.country_names_map = {}
-        self.fetch_country_names_map()
+        data_sources = json.load("resources/data_sources.json")
+        self.region_currency_reference_url = data_sources["appstore_region_currency_reference"]
 
         self.country_currency_mapping = {}
         self.fetch_appstore_country_currency_mapping()
@@ -27,23 +20,8 @@ class AppStorePricing:
         self.country_reference_rounded_prices = {}
         self.load_reference_prices(appstore_reference_prices_file="resources/appstore_reference_prices.csv")
 
-    def fetch_country_names_map(self):
-        response = requests.get("https://restcountries.com/v3.1/all")
-        self.country_info = response.json()
-
-        for country in self.country_info:
-            # Compile a set of all possible names
-            all_names = set()
-            all_names.add(country["name"]["common"].lower())
-            all_names.add(country["name"].get("official", "").lower())
-            all_names.update([name.lower() for name in country.get("altSpellings", []) if len(name) > 2])
-            all_names.update(translation.get("common", "").lower() for translation in country["translations"].values())
-            all_names.update(
-                translation.get("official", "").lower() for translation in country["translations"].values()
-            )
-
-            # Add the country's two-letter code to the all_country_names dictionary
-            self.country_names_map[country["cca2"]] = all_names
+        self.pricing_utils = PricingUtils()
+        self.geo_utils = GeoUtils()
 
     def log(self, iso_code, name, match):
         if iso_code in self.dup_check:
@@ -51,34 +29,11 @@ class AppStorePricing:
         else:
             self.dup_check[iso_code] = [(name, match)]
 
-    def get_country_iso_code(self, name):
-        name = name.lower()
-
-        # Attempt to match with the direct common name or official name
-        for iso_code, names in self.country_names_map.items():
-            if name in names:
-                self.log(iso_code, name, name + "-direct")
-                return iso_code
-
-        # Use thefuzz's token_set_ratio for fuzzy matching
-        all_names = [item for sublist in self.country_names_map.values() for item in sublist]
-        best_match, score = process.extractOne(name, all_names, scorer=fuzz.WRatio)
-
-        # Adjust the score threshold based on your needs
-        if score > 80:
-            for iso_code, names in self.country_names_map.items():
-                if best_match in names:
-                    self.log(iso_code, name, best_match + "-thefuzz")
-                    return iso_code
-
-        self.log(None, name, "no match")
-        return None
-
     def load_reference_prices(self, appstore_reference_prices_file):
         with open(appstore_reference_prices_file, mode="r", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                iso_code = self.get_country_iso_code(row["Countries or Regions"])
+                iso_code = self.geo_utils.get_country_iso_code(row["Countries or Regions"])
                 if iso_code:
                     self.country_reference_rounded_prices[iso_code] = Decimal(row["Price"])
                     # print(",".join([iso_code, row["Countries or Regions"]]))
@@ -87,7 +42,7 @@ class AppStorePricing:
 
     def fetch_appstore_country_currency_mapping(self):
         print("Fetching appstore countries and regions information ...")
-        response = requests.get(self.url)
+        response = requests.get(self.region_currency_reference_url)
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Find the table - you may need to adjust the selector based on the actual page structure
@@ -106,7 +61,7 @@ class AppStorePricing:
             if "," in item["Countries or Regions"]:
                 country_names = [i.strip() for i in item["Countries or Regions"].split(",")]
                 for c in country_names:
-                    iso_code = self.get_country_iso_code(c)
+                    iso_code = self.geo_utils.get_country_iso_code(c)
                     if not iso_code:
                         print(c, "has no iso code!")
 
@@ -127,28 +82,6 @@ class AppStorePricing:
                 item.pop("Countries or Regions")
                 self.country_currency_mapping[item["Region Code"]] = item
 
-    def convert_between_currencies_by_market_xrate(self, price, from_currency, to_currency):
-        try:
-            converted_price = self.currency_converter.convert(price, from_currency, to_currency)
-        except ValueError:
-            response = requests.get(
-                f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{from_currency.lower()}.json"
-            )
-            currency_exchange_rates = response.json()
-            converted_price = price * currency_exchange_rates[from_currency.lower()][to_currency.lower()]
-
-            # Alternative solution using xe.com
-            # data = requests.get(
-            #     f"https://www.xe.com/currencyconverter/convert/?Amount={price}&From={from_currency}&To={to_currency}"
-            # )
-            # soup = BeautifulSoup(data, "html.parser")
-            # p_element = soup.find("p", class_="sc-1c293993-1 fxoXHw")
-            # full_text = p_element.get_text()
-            # numeric_text = "".join([char for char in full_text if char.isdigit() or char == "."])
-            # converted_price = float(numeric_text)
-
-        return converted_price
-
     def local_currency_to_appstore_preferred_currency(self, country_iso2_code, price, country_currency):
         appstore_currency = self.country_currency_mapping.get(country_iso2_code, {}).get(
             "Report Currency", country_currency
@@ -157,7 +90,7 @@ class AppStorePricing:
         if country_currency == appstore_currency:
             return appstore_currency, price
 
-        converted_price = self.convert_between_currencies_by_market_xrate(
+        converted_price = self.pricing_utils.convert_between_currencies_by_market_xrate(
             price=price, from_currency=country_currency, to_currency=appstore_currency
         )
         return appstore_currency, converted_price
