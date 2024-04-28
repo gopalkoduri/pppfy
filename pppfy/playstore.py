@@ -11,26 +11,20 @@ from .utils import PricingUtils, GeoUtils
 class PlayStorePricing:
     def __init__(self):
         self.dup_check = {}
-        data_sources = json.load("resources/data_sources.json")
+        data_sources = json.load(open("resources/data_sources.json"))
         self.region_currency_reference_url = data_sources["playstore_region_currency_reference"]
 
         self.country_currency_mapping = {}
         self.fetch_playstore_country_currency_mapping()
 
         self.country_reference_rounded_prices = {}
-        self.load_reference_prices(appstore_reference_prices_file="resources/playstore_reference_prices.csv")
+        self.load_reference_prices(playstore_reference_prices_file="resources/playstore_reference_prices.csv")
 
         self.pricing_utils = PricingUtils()
         self.geo_utils = GeoUtils()
 
-    def log(self, iso_code, name, match):
-        if iso_code in self.dup_check:
-            self.dup_check[iso_code].append((name, match))
-        else:
-            self.dup_check[iso_code] = [(name, match)]
-
-    def load_reference_prices(self, appstore_reference_prices_file):
-        with open(appstore_reference_prices_file, mode="r", encoding="utf-8") as csvfile:
+    def load_reference_prices(self, playstore_reference_prices_file):
+        with open(playstore_reference_prices_file, mode="r", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
                 iso_code = self.geo_utils.get_country_iso_code(row["Countries or Regions"])
@@ -41,46 +35,46 @@ class PlayStorePricing:
                     print(f"No ISO code found for {row['Countries or Regions']}")
 
     def fetch_playstore_country_currency_mapping(self):
-        print("Fetching appstore countries and regions information ...")
-        response = requests.get(self.region_currency_reference_url)
-        soup = BeautifulSoup(response.content, "html.parser")
+        """Process HTML tables to extract and transform data according to the rules."""
+        response = requests.get(self.region_currency_reference_url).text
+        soup = BeautifulSoup(response, "html.parser")
 
-        # Find the table - you may need to adjust the selector based on the actual page structure
-        table = soup.find("table")
-        headers = [th.get_text(strip=True) for th in table.find_all("th")]
+        tables = soup.find_all("table", class_="nice-table")
+
         data = []
-        for row in table.find_all("tr")[1:]:  # Skip header row
-            columns = [col.get_text(strip=True) for col in row.find_all("td")]
-            data.append(dict(zip(headers, columns)))
+        headers = (
+            []
+        )  # will be 4 items - Location, Download free apps, Make Google Play purchases and Buyer Currency and Price Range
 
-        # Some of the rows have region with multiple countries, let's split them up
-        self.country_currency_mapping = {}
-        for item in data:
-            if item["Region Code"] in ["ZZ", "Z1"]:
-                continue
-            if "," in item["Countries or Regions"]:
-                country_names = [i.strip() for i in item["Countries or Regions"].split(",")]
-                for c in country_names:
-                    iso_code = self.geo_utils.get_country_iso_code(c)
-                    if not iso_code:
-                        print(c, "has no iso code!")
+        for index, table in enumerate(tables[:3]):
+            rows = table.find_all("tr")
+            if index == 0:
+                # First row of the first table as header
+                headers = [th.get_text().strip() for th in rows[0].find_all("th")]
+                rows = rows[1:]  # Exclude the header row from data processing
 
-                    # Countries like Vietnam and Pakistan have their own currencies supported, but are mentioned in WW as well
-                    # Keep their own currencies
-                    if iso_code in self.country_currency_mapping.keys() and item["Region Code"] in ["EU", "LL", "WW"]:
-                        continue
+            for row in rows:
+                cols = row.find_all("td")
+                if not cols:
+                    continue  # skip rows without table data cells
 
-                    country_info = {
-                        "Report Region": item["Report Region"],
-                        "Report Currency": item["Report Currency"],
-                        "Region Code": iso_code,
-                        "Country": c,
-                    }
-                    self.country_currency_mapping[iso_code] = country_info
-            else:
-                item["Country"] = item["Countries or Regions"]
-                item.pop("Countries or Regions")
-                self.country_currency_mapping[item["Region Code"]] = item
+                # Filter based on text color in the third column
+                third_col_span = cols[2].find("span")
+                if third_col_span and third_col_span.get("class"):
+                    if "green-text" not in third_col_span.get("class"):
+                        continue  # Exclude rows without check mark
+
+                # Create a list of column values
+                row_data = [col.get_text().strip() for i, col in enumerate(cols)]
+
+                # Extract only the capital letters from the fourth column
+                if len(row_data) > 3:
+                    currency = "".join([c for c in row_data[3] if c.isupper()])
+                    row_data[3] = currency
+
+                data.append(dict(zip(headers, row_data)))
+
+        return data
 
     def local_currency_to_appstore_preferred_currency(self, country_iso2_code, price, country_currency):
         appstore_currency = self.country_currency_mapping.get(country_iso2_code, {}).get(
