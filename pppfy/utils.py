@@ -6,12 +6,18 @@ from currency_converter import CurrencyConverter
 
 class GeoUtils:
     def __init__(self):
+        self.dup_check = {}
         self.country_info = {}
         self.country_names_map = {}
+        data_sources = json.load(open("resources/data_sources.json"))
+        self.restcountries_api_endpoint = data_sources["restcountries_api_endpoint"]
         self.fetch_country_names_map()
 
-        data_sources = json.load("resources/data_sources.json")
-        self.restcountries_api_endpoint = data_sources["restcountries_api_endpoint"]
+    def log(self, iso_code, name, match):
+        if iso_code in self.dup_check:
+            self.dup_check[iso_code].append((name, match))
+        else:
+            self.dup_check[iso_code] = [(name, match)]
 
     def fetch_country_names_map(self):
         response = requests.get(self.restcountries_api_endpoint)
@@ -59,7 +65,7 @@ class PricingUtils:
     def __init__(self):
         self.currency_converter = CurrencyConverter()
 
-        data_sources = json.load("resources/data_sources.json")
+        data_sources = json.load(open("resources/data_sources.json"))
         self.backup_currency_conversion_api_endpoint = data_sources["backup_currency_conversion_api_endpoint"]
 
     def convert_between_currencies_by_market_xrate(self, price, from_currency, to_currency):

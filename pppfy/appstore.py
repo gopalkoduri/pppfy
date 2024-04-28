@@ -10,24 +10,17 @@ from .utils import PricingUtils, GeoUtils
 
 class AppStorePricing:
     def __init__(self):
-        self.dup_check = {}
-        data_sources = json.load("resources/data_sources.json")
+        data_sources = json.load(open("resources/data_sources.json"))
         self.region_currency_reference_url = data_sources["appstore_region_currency_reference"]
+
+        self.pricing_utils = PricingUtils()
+        self.geo_utils = GeoUtils()
 
         self.country_currency_mapping = {}
         self.fetch_appstore_country_currency_mapping()
 
         self.country_reference_rounded_prices = {}
         self.load_reference_prices(appstore_reference_prices_file="resources/appstore_reference_prices.csv")
-
-        self.pricing_utils = PricingUtils()
-        self.geo_utils = GeoUtils()
-
-    def log(self, iso_code, name, match):
-        if iso_code in self.dup_check:
-            self.dup_check[iso_code].append((name, match))
-        else:
-            self.dup_check[iso_code] = [(name, match)]
 
     def load_reference_prices(self, appstore_reference_prices_file):
         with open(appstore_reference_prices_file, mode="r", encoding="utf-8") as csvfile:
