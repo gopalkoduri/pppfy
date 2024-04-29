@@ -2,6 +2,7 @@ import csv
 import json
 from pathlib import Path
 from .appstore import AppStorePricing
+from .playstore import PlayStorePricing
 
 
 class Converter:
@@ -109,6 +110,40 @@ class Converter:
             appstore_price_mapping.append(mapping)
 
         return appstore_price_mapping
+
+    def get_playstore_price_mapping(self, source_country="US", source_price=79, destination_country=None, year=None):
+        price_mapping = self.get_price_mapping(source_country, source_price, destination_country, year)
+        playstore_pricing = PlayStorePricing()
+
+        if isinstance(price_mapping, dict):
+            price_mapping = [price_mapping]
+
+        playstore_price_mapping = []
+        for mapping in price_mapping:
+            iso2_code = mapping["ISO"]
+            local_price = mapping["local_price"]
+            local_currency = mapping["local_currency"]
+
+            # Is the country featured in appstore list of countries?
+            if iso2_code not in playstore_pricing.country_reference_rounded_prices:
+                continue
+
+            playstore_currency, playstore_price = playstore_pricing.local_currency_to_playstore_preferred_currency(
+                iso2_code, local_price, local_currency
+            )
+
+            # Some heavily devalued currencies might end up with very low usd values < 10
+            # TODO needs a better fix
+            if playstore_price < 10:
+                playstore_price = 10
+
+            rounded_price = playstore_pricing.round_off_price_to_playstore_format(iso2_code, playstore_price)
+
+            mapping["playstore_currency"] = playstore_currency
+            mapping["playstore_price"] = rounded_price
+            playstore_price_mapping.append(mapping)
+
+        return playstore_price_mapping
 
 
 # Usage

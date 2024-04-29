@@ -27,12 +27,12 @@ class PlayStorePricing:
         with open(playstore_reference_prices_file, mode="r", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                iso_code = self.geo_utils.get_country_iso_code(row["Countries or Regions"])
+                iso_code = self.geo_utils.get_country_iso_code(row["Country"])
                 if iso_code:
-                    self.country_reference_rounded_prices[iso_code] = Decimal(row["Price"])
-                    # print(",".join([iso_code, row["Countries or Regions"]]))
+                    self.country_reference_rounded_prices[iso_code] = Decimal(row["Price"] / 1000000)
+                    # print(",".join([iso_code, row["Country"]]))
                 else:
-                    print(f"No ISO code found for {row['Countries or Regions']}")
+                    print(f"No ISO code found for {row['Country']}")
 
     def fetch_playstore_country_currency_mapping(self):
         """Process HTML tables to extract and transform data according to the rules."""
@@ -41,7 +41,7 @@ class PlayStorePricing:
 
         tables = soup.find_all("table", class_="nice-table")
 
-        data = []
+        self.country_currency_mapping = {}
         headers = (
             []
         )  # will be 4 items - Location, Download free apps, Make Google Play purchases and Buyer Currency and Price Range
@@ -72,24 +72,24 @@ class PlayStorePricing:
                     currency = "".join([c for c in row_data[3] if c.isupper()])
                     row_data[3] = currency
 
-                data.append(dict(zip(headers, row_data)))
+                entry = dict(zip(headers, row_data))
+                iso_code = self.geo_utils.get_country_iso_code(entry["Location"])
+                self.country_currency_mapping[iso_code] = entry
 
-        return data
-
-    def local_currency_to_appstore_preferred_currency(self, country_iso2_code, price, country_currency):
-        appstore_currency = self.country_currency_mapping.get(country_iso2_code, {}).get(
-            "Report Currency", country_currency
+    def local_currency_to_playstore_preferred_currency(self, country_iso2_code, price, country_currency):
+        playstore_currency = self.country_currency_mapping.get(country_iso2_code, {}).get(
+            "Buyer Currency and Price Range", country_currency
         )
 
-        if country_currency == appstore_currency:
-            return appstore_currency, price
+        if country_currency == playstore_currency:
+            return playstore_currency, price
 
         converted_price = self.pricing_utils.convert_between_currencies_by_market_xrate(
-            price=price, from_currency=country_currency, to_currency=appstore_currency
+            price=price, from_currency=country_currency, to_currency=playstore_currency
         )
-        return appstore_currency, converted_price
+        return playstore_currency, converted_price
 
-    def round_off_price_to_appstore_format(self, iso2_code, price):
+    def round_off_price_to_playstore_format(self, iso2_code, price):
         reference_price = self.country_reference_rounded_prices.get(iso2_code)
         if reference_price is None:
             raise ValueError(f"No reference price found for {iso2_code}")
