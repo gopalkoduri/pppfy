@@ -10,7 +10,9 @@ from .utils import PricingUtils, GeoUtils
 
 class PlayStorePricing:
     def __init__(self):
-        self.dup_check = {}
+        self.pricing_utils = PricingUtils()
+        self.geo_utils = GeoUtils()
+
         data_sources = json.load(open("resources/data_sources.json"))
         self.region_currency_reference_url = data_sources["playstore_region_currency_reference"]
 
@@ -20,19 +22,11 @@ class PlayStorePricing:
         self.country_reference_rounded_prices = {}
         self.load_reference_prices(playstore_reference_prices_file="resources/playstore_reference_prices.csv")
 
-        self.pricing_utils = PricingUtils()
-        self.geo_utils = GeoUtils()
-
     def load_reference_prices(self, playstore_reference_prices_file):
         with open(playstore_reference_prices_file, mode="r", encoding="utf-8") as csvfile:
             reader = csv.DictReader(csvfile)
             for row in reader:
-                iso_code = self.geo_utils.get_country_iso_code(row["Country"])
-                if iso_code:
-                    self.country_reference_rounded_prices[iso_code] = Decimal(row["Price"] / 1000000)
-                    # print(",".join([iso_code, row["Country"]]))
-                else:
-                    print(f"No ISO code found for {row['Country']}")
+                self.country_reference_rounded_prices[row["Country"]] = Decimal(int(row["Price"])) / 1000000
 
     def fetch_playstore_country_currency_mapping(self):
         """Process HTML tables to extract and transform data according to the rules."""
