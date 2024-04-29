@@ -3,46 +3,36 @@ import json
 from pathlib import Path
 from .appstore import AppStorePricing
 from .playstore import PlayStorePricing
+from .utils import GeoUtils
 
 
 class Converter:
-    def __init__(self, ppp_data_dir="ppp/data", country_info_file="country-info/data/country-info.json"):
-        self.ppp_data_dir = Path(ppp_data_dir)
-        self.ppp_data_file = self.ppp_data_dir / "ppp-gdp.csv"
-        self.country_info_file = Path(country_info_file)
-        self.ppp_data = {}
-        self.country_info = {}
-        self.load_ppp_data()
-        self.load_country_info()
+    def __init__(self, ppp_data_file="ppp/data/ppp-gdp.csv", geo_utils=None):
+        if geo_utils:
+            self.geo_utils = geo_utils
+        else:
+            self.geo_utils = GeoUtils()
 
-    def load_ppp_data(self):
-        with open(self.ppp_data_file, mode="r", encoding="utf-8") as file:
+        # map of country_iso2_code: {year: ppp} data
+        self.ppp_data = {}
+        self.load_ppp_data(ppp_data_file)
+
+    def load_ppp_data(self, ppp_data_file):
+        with open(ppp_data_file, mode="r", encoding="utf-8") as file:
             csv_reader = csv.DictReader(file)
             for row in csv_reader:
-                country_code = row["Country ID"]
+                country_iso2_code = row["Country ID"]
                 year = int(row["Year"])
                 ppp = float(row["PPP"])
 
-                if country_code not in self.ppp_data:
-                    self.ppp_data[country_code] = {}
+                if country_iso2_code not in self.ppp_data:
+                    self.ppp_data[country_iso2_code] = {}
 
-                self.ppp_data[country_code][year] = ppp
-
-    def load_country_info(self):
-        with open(self.country_info_file, "r", encoding="utf-8") as file:
-            countries = json.load(file)
-            for country in countries:
-                iso2_code = country["ISO"]
-                self.country_info[iso2_code] = {
-                    "country": country["Country"],
-                    "ISO": iso2_code,
-                    "ISO3": country["ISO3"],
-                    "currency": country["CurrencyCode"],
-                }
+                self.ppp_data[country_iso2_code][year] = ppp
 
     def get_price_mapping(self, source_country="US", source_price=79, destination_country=None, year=None):
         if source_country not in self.ppp_data:
-            raise ValueError("Source country data not available")
+            raise ValueError("Source country ppp data not available")
 
         mappings = []
 
@@ -91,7 +81,7 @@ class Converter:
             local_currency = mapping["local_currency"]
 
             # Is the country featured in appstore list of countries?
-            if iso2_code not in appstore_pricing.country_reference_rounded_prices:
+            if iso2_code not in appstore_pricing.map_country_to_reference_rounded_price:
                 continue
 
             appstore_currency, appstore_price = appstore_pricing.local_currency_to_appstore_preferred_currency(
@@ -125,7 +115,7 @@ class Converter:
             local_currency = mapping["local_currency"]
 
             # Is the country featured in appstore list of countries?
-            if iso2_code not in playstore_pricing.country_reference_rounded_prices:
+            if iso2_code not in playstore_pricing.map_country_to_reference_rounded_price:
                 continue
 
             playstore_currency, playstore_price = playstore_pricing.local_currency_to_playstore_preferred_currency(
