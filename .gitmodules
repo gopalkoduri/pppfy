@@ -1,3 +1,3 @@
 [submodule "ppp"]
 	path = ppp
-	url = git@bitbucket.org:musicmuni/ppp.git
+	url = https://github.com/gopalkoduri/ppp
