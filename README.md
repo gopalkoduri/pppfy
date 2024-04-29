@@ -62,13 +62,3 @@ Contributions to pppfy are welcome! Please feel free to submit pull requests or 
 ## License
 
 This project is licensed under the GNU Affero General Public License - see the [LICENSE](LICENSE) file for details.
-
-```
-
-### Additional Notes
-- **Modify URLs**: Replace `https://github.com/gopalkoduri/pppfy.git` with the actual URL of your repository.
-- **LICENSE File**: Ensure you have a LICENSE file in your repository if you mention it in the README.
-- **Error Handling in Example**: The example usage shows direct method calls; ensure your actual code handles any potential exceptions, especially from user inputs or file operations.
-
-This README.md file serves as both documentation and a quick guide for anyone wanting to use or contribute to your package.
-```
