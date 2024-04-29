@@ -1,6 +1,0 @@
-{
-  "appstore_region_currency_reference": "https://developer.apple.com/help/app-store-connect/reference/financial-report-regions-and-currencies",
-  "playstore_region_currency_reference": "https://support.google.com/googleplay/android-developer/answer/10532353?hl=en",
-  "restcountries_api_endpoint": "https://restcountries.com/v3.1/all",
-  "backup_currency_conversion_api_endpoint": "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1"
-}

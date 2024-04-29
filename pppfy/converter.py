@@ -1,23 +1,13 @@
 import csv
-import json
-from pathlib import Path
-from .appstore import AppStorePricing
-from .playstore import PlayStorePricing
-from .utils import GeoUtils
 
 
 class Converter:
-    def __init__(self, ppp_data_file="ppp/data/ppp-gdp.csv", geo_utils=None):
-        if geo_utils:
-            self.geo_utils = geo_utils
-        else:
-            self.geo_utils = GeoUtils()
-
+    def __init__(self, ppp_data_file="ppp/data/ppp-gdp.csv"):
         # map of country_iso2_code: {year: ppp} data
-        self.ppp_data = {}
-        self.load_ppp_data(ppp_data_file)
+        self._ppp_data = {}
+        self._load_ppp_data(ppp_data_file)
 
-    def load_ppp_data(self, ppp_data_file):
+    def _load_ppp_data(self, ppp_data_file):
         with open(ppp_data_file, mode="r", encoding="utf-8") as file:
             csv_reader = csv.DictReader(file)
             for row in csv_reader:
@@ -25,118 +15,89 @@ class Converter:
                 year = int(row["Year"])
                 ppp = float(row["PPP"])
 
-                if country_iso2_code not in self.ppp_data:
-                    self.ppp_data[country_iso2_code] = {}
+                if country_iso2_code not in self._ppp_data:
+                    self._ppp_data[country_iso2_code] = {}
 
-                self.ppp_data[country_iso2_code][year] = ppp
+                self._ppp_data[country_iso2_code][year] = ppp
 
     def get_price_mapping(self, source_country="US", source_price=79, destination_country=None, year=None):
-        if source_country not in self.ppp_data:
-            raise ValueError("Source country ppp data not available")
+        """
+        Calculates the purchasing power parity (PPP) adjusted price from a source country to one or more
+        destination countries. If the destination country is specified, the function returns the PPP-adjusted
+        price for that country; otherwise, it computes the prices for all available countries.
+
+        Parameters:
+            source_country (str): ISO2 code of the source country (default: 'US').
+            source_price (int, float): The price in the source country's currency (default: 79).
+            destination_country (str, optional): ISO2 code of the destination country. If None, PPP-adjusted
+                                                prices are calculated for all countries.
+            year (int, optional): The year for which to calculate the PPP. If None, the latest common year
+                                between the source and destination countries is used.
+
+        Returns:
+            list or dict: A list of dictionaries containing the PPP-adjusted prices and related information
+                        for each destination country. If a single destination country is specified, a dictionary
+                        is returned instead of a list.
+
+        Raises:
+            ValueError: If PPP data for the source country is not available.
+        """
+        # Ensure the source country's PPP data is available
+        if source_country not in self._ppp_data:
+            raise ValueError("Source country PPP data not available")
 
         mappings = []
 
+        # Determine the destination countries to process
         if destination_country:
-            countries = [destination_country] if destination_country in self.country_info else []
+            destination_countries = [destination_country] if destination_country in self._ppp_data else []
         else:
-            countries = self.ppp_data.keys()
+            destination_countries = self._ppp_data.keys()
 
-        for iso2_code in countries:
+        # Iterate through each destination country to compute the adjusted price
+        for destination_country_iso2_code in destination_countries:
+            # Find the applicable year for PPP data
             if year is None:
                 cur_pair_year = max(
-                    set(self.ppp_data[source_country].keys()).intersection(self.ppp_data[iso2_code].keys())
+                    set(self._ppp_data[source_country].keys()).intersection(
+                        self._ppp_data[destination_country_iso2_code].keys()
+                    )
                 )
             else:
                 cur_pair_year = year
 
-            source_ppp = self.ppp_data[source_country][cur_pair_year]
-            destination_ppp = self.ppp_data[iso2_code][cur_pair_year]
+            # Retrieve PPP factors from data
+            source_ppp = self._ppp_data[source_country][cur_pair_year]
+            destination_ppp = self._ppp_data[destination_country_iso2_code][cur_pair_year]
+
+            # Calculate USD equivalent price and adjust it according to the destination country's PPP
             usd_equivalent_price = source_price / source_ppp
             adjusted_price = usd_equivalent_price * destination_ppp
 
+            # Append the result in the mappings list
             mappings.append(
                 {
-                    "country": self.country_info[iso2_code]["country"],
-                    "ISO": iso2_code,
-                    "ISO3": self.country_info[iso2_code]["ISO3"],
-                    "local_currency": self.country_info[iso2_code]["currency"],
-                    "local_price": adjusted_price,
+                    "ISO2": destination_country_iso2_code,
+                    "ppp_adjusted_local_price": adjusted_price,
                     "ppp_year": cur_pair_year,
                 }
             )
 
+        # Return a list of mappings or a single mapping if a specific country is requested
         return mappings if destination_country is None else mappings[0]
 
-    def get_appstore_price_mapping(self, source_country="US", source_price=79, destination_country=None, year=None):
-        price_mapping = self.get_price_mapping(source_country, source_price, destination_country, year)
-        appstore_pricing = AppStorePricing()
+    def get_country_ppp(self, country_iso2_code, year=None):
+        if country_iso2_code in self._ppp_data:
+            if not year:
+                year = max(self._ppp_data[country_iso2_code])
 
-        if isinstance(price_mapping, dict):
-            price_mapping = [price_mapping]
-
-        appstore_price_mapping = []
-        for mapping in price_mapping:
-            iso2_code = mapping["ISO"]
-            local_price = mapping["local_price"]
-            local_currency = mapping["local_currency"]
-
-            # Is the country featured in appstore list of countries?
-            if iso2_code not in appstore_pricing.map_country_to_reference_rounded_price:
-                continue
-
-            appstore_currency, appstore_price = appstore_pricing.local_currency_to_appstore_preferred_currency(
-                iso2_code, local_price, local_currency
-            )
-
-            # Some heavily devalued currencies might end up with very low usd values < 10
-            # TODO needs a better fix
-            if appstore_price < 10:
-                appstore_price = 10
-
-            rounded_price = appstore_pricing.round_off_price_to_appstore_format(iso2_code, appstore_price)
-
-            mapping["appstore_currency"] = appstore_currency
-            mapping["appstore_price"] = rounded_price
-            appstore_price_mapping.append(mapping)
-
-        return appstore_price_mapping
-
-    def get_playstore_price_mapping(self, source_country="US", source_price=79, destination_country=None, year=None):
-        price_mapping = self.get_price_mapping(source_country, source_price, destination_country, year)
-        playstore_pricing = PlayStorePricing()
-
-        if isinstance(price_mapping, dict):
-            price_mapping = [price_mapping]
-
-        playstore_price_mapping = []
-        for mapping in price_mapping:
-            iso2_code = mapping["ISO"]
-            local_price = mapping["local_price"]
-            local_currency = mapping["local_currency"]
-
-            # Is the country featured in appstore list of countries?
-            if iso2_code not in playstore_pricing.map_country_to_reference_rounded_price:
-                continue
-
-            playstore_currency, playstore_price = playstore_pricing.local_currency_to_playstore_preferred_currency(
-                iso2_code, local_price, local_currency
-            )
-
-            # Some heavily devalued currencies might end up with very low usd values < 10
-            # TODO needs a better fix
-            if playstore_price < 10:
-                playstore_price = 10
-
-            rounded_price = playstore_pricing.round_off_price_to_playstore_format(iso2_code, playstore_price)
-
-            mapping["playstore_currency"] = playstore_currency
-            mapping["playstore_price"] = rounded_price
-            playstore_price_mapping.append(mapping)
-
-        return playstore_price_mapping
+            if year in self._ppp_data[country_iso2_code]:
+                return self._ppp_data[country_iso2_code][year]
+            else:
+                raise ("Data not available for the given year")
 
 
 # Usage
 # from pppfy.converter import Converter
-# converter = Converter()
-# print(converter.get_price_mapping(source_country="US", source_price=79))
+# c = Converter()
+# print(c.get_price_mapping(source_country="US", source_price=79))

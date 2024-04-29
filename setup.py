@@ -3,11 +3,14 @@ from setuptools import setup, find_packages
 setup(
     name="pppfy",
     version="1.0.0",
-    description="A Python package to adjust pricing based on Purchasing Power Parity (PPP)",
+    description="A Python package to get prices based on Purchasing Power Parity (PPP)",
     author="Gopala Krishna Koduri",
     author_email="gopal@riyazapp.com",
     url="https://riyazapp.com",
     packages=find_packages(),
+    package_data={
+        "ppp": ["data/*.csv"],  # Include CSV files in the data directory within the ppp package
+    },
     include_package_data=True,
     install_requires=[
         # List your package dependencies here
