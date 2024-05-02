@@ -1,10 +1,13 @@
 import csv
+from pkg_resources import resource_filename
 
 
 class Converter:
-    def __init__(self, ppp_data_file="ppp/data/ppp-gdp.csv"):
+    def __init__(self, ppp_data_file=None):
         # map of country_iso2_code: {year: ppp} data
         self._ppp_data = {}
+        if not ppp_data_file:
+            ppp_data_file = resource_filename("ppp", "data/ppp-gdp.csv")
         self._load_ppp_data(ppp_data_file)
 
     def _load_ppp_data(self, ppp_data_file):

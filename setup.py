@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="pppfy",
-    version="1.0.1",
+    version="1.1.0",
     description="A Python package to get prices based on Purchasing Power Parity (PPP)",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",  # Ensure you include a README.md in your package
