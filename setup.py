@@ -2,16 +2,16 @@ from setuptools import setup, find_packages
 
 setup(
     name="pppfy",
-    version="1.1.0",
+    version="2024.05.03",
     description="A Python package to get prices based on Purchasing Power Parity (PPP)",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",  # Ensure you include a README.md in your package
     author="Gopala Krishna Koduri",
     author_email="gopal@riyazapp.com",
-    url="https://github.com/gopalkoduri/pppfy",  # Company URL
+    url="https://github.com/musicmuni/pppfy",  # Company URL
     project_urls={  # Additional URLs
-        "Source Code": "https://github.com/gopalkoduri/pppfy",
-        "Issue Tracker": "https://github.com/gopalkoduri/pppfy/issues",
+        "Source Code": "https://github.com/musicmuni/pppfy",
+        "Issue Tracker": "https://github.com/musicmuni/pppfy/issues",
         "Connect w/ Author": "https://linkedin.com/in/gopalkoduri",
         "Riyaz - Learn to sing": "https://riyazapp.com",
     },
